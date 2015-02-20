@@ -1,7 +1,20 @@
 from django.core.management.base import BaseCommand
-from optparse import make_option
 from django_rq import get_scheduler
+import logging
+from optparse import make_option
+from rq.utils import ColorizingStreamHandler
 
+
+# Setup logging for RQScheduler if not already configured
+logger = logging.getLogger('rq_scheduler')
+if not logger.handlers:
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(fmt='%(asctime)s %(message)s',
+                                  datefmt='%H:%M:%S')
+    handler = ColorizingStreamHandler()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    
 
 class Command(BaseCommand):
     """
