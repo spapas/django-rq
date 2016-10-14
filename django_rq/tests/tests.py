@@ -1,11 +1,16 @@
 from django.contrib.auth.models import User
-from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.core.urlresolvers import reverse
 from django.test import TestCase
-from django.utils.unittest import skipIf
+try:
+    from unittest import skipIf
+except ImportError:
+    from django.utils.unittest import skipIf
 from django.test.client import Client
-from django.test.utils import override_settings
+try:
+    from django.test import override_settings
+except ImportError:
+    from django.test.utils import override_settings
 from django.conf import settings
 
 from rq import get_current_job, Queue
@@ -16,7 +21,7 @@ from rq.registry import (DeferredJobRegistry, FinishedJobRegistry,
 from django_rq.decorators import job
 from django_rq.queues import (
     get_connection, get_queue, get_queue_by_index, get_queues,
-    get_unique_connection_configs
+    get_unique_connection_configs, DjangoRQ
 )
 from django_rq import thread_queue
 from django_rq.workers import get_worker
@@ -124,6 +129,36 @@ class QueuesTest(TestCase):
         self.assertEqual(connection_kwargs['host'], 'host')
         self.assertEqual(connection_kwargs['port'], 1234)
         self.assertEqual(connection_kwargs['db'], 4)
+        self.assertEqual(connection_kwargs['password'], 'password')
+
+    def test_get_queue_url_with_db(self):
+        """
+        Test that get_queue use the right parameters for queues using URL for
+        connection, where URL contains the db number (either as querystring
+        or path segment).
+        """
+        config = QUEUES['url_with_db']
+        queue = get_queue('url_with_db')
+        connection_kwargs = queue.connection.connection_pool.connection_kwargs
+        self.assertEqual(queue.name, 'url_with_db')
+        self.assertEqual(connection_kwargs['host'], 'host')
+        self.assertEqual(connection_kwargs['port'], 1234)
+        self.assertEqual(connection_kwargs['db'], 5)
+        self.assertEqual(connection_kwargs['password'], 'password')
+
+    def test_get_queue_url_with_db_default(self):
+        """
+        Test that get_queue use the right parameters for queues using URL for
+        connection, where no DB given and URL does not contain the db number
+        (redis-py defaults to 0, should not break).
+        """
+        config = QUEUES['url_default_db']
+        queue = get_queue('url_default_db')
+        connection_kwargs = queue.connection.connection_pool.connection_kwargs
+        self.assertEqual(queue.name, 'url_default_db')
+        self.assertEqual(connection_kwargs['host'], 'host')
+        self.assertEqual(connection_kwargs['port'], 1234)
+        self.assertEqual(connection_kwargs['db'], 0)
         self.assertEqual(connection_kwargs['password'], 'password')
 
     def test_get_queue_test(self):
@@ -250,13 +285,6 @@ class DecoratorTest(TestCase):
         result.delete()
 
 
-class ConfigTest(TestCase):
-    @override_settings(RQ_QUEUES=None)
-    def test_empty_queue_setting_raises_exception(self):
-        # Raise an exception if RQ_QUEUES is not defined
-        self.assertRaises(ImproperlyConfigured, get_connection)
-
-
 @override_settings(RQ={'AUTOCOMMIT': True})
 class WorkersTest(TestCase):
     def test_get_worker_default(self):
@@ -284,7 +312,7 @@ class WorkersTest(TestCase):
         """
         queue = get_queue()
         job = queue.enqueue(access_self)
-        call_command('rqworker', burst=True)
+        call_command('rqworker', '--burst')
         failed_queue = Queue(name='failed', connection=queue.connection)
         self.assertFalse(job.id in failed_queue.job_ids)
         job.delete()
@@ -300,6 +328,7 @@ class ViewTest(TestCase):
         user.save()
         self.client = Client()
         self.client.login(username=user.username, password='pass')
+        get_queue('django_rq_test').connection.flushall()
 
     def test_requeue_job(self):
         """
@@ -564,3 +593,22 @@ class RedisCacheTest(TestCase):
         self.assertEqual(connection_kwargs['port'], int(cachePort))
         self.assertEqual(connection_kwargs['db'], int(cacheDBNum))
         self.assertEqual(connection_kwargs['password'], None)
+
+
+class DummyQueue(DjangoRQ):
+    """Just Fake class for the following test"""
+
+
+class QueueClassTest(TestCase):
+
+    def test_default_queue_class(self):
+        queue = get_queue('test')
+        self.assertIsInstance(queue, DjangoRQ)
+
+    def test_for_queue(self):
+        queue = get_queue('test1')
+        self.assertIsInstance(queue, DummyQueue)
+
+    def test_in_kwargs(self):
+        queue = get_queue('test', queue_class=DummyQueue)
+        self.assertIsInstance(queue, DummyQueue)

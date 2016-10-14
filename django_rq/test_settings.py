@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import os
+
+REDIS_HOST = os.environ.get("REDIS_HOST", 'localhost')
 
 SECRET_KEY = 'a'
 
@@ -13,6 +16,11 @@ try:
         REDIS_CACHE_TYPE = 'django-redis-cache'
 except ImportError:
     REDIS_CACHE_TYPE = 'none'
+try:
+    from django.utils.log import NullHandler
+    nullhandler = 'django.utils.log.NullHandler'
+except:
+    nullhandler = 'logging.NullHandler'
 
 INSTALLED_APPS = [
     'django.contrib.contenttypes',
@@ -34,7 +42,7 @@ if REDIS_CACHE_TYPE == 'django-redis':
     CACHES = {
         'django-redis': {
             'BACKEND': 'redis_cache.cache.RedisCache',
-            'LOCATION': 'localhost:6379:2',
+            'LOCATION': '%s:6379:2' % REDIS_HOST,
             'KEY_PREFIX': 'django-rq-tests',
             'OPTIONS': {
                 'CLIENT_CLASS': 'redis_cache.client.DefaultClient',
@@ -46,7 +54,7 @@ elif REDIS_CACHE_TYPE == 'django-redis-cache':
     CACHES = {
         'django-redis-cache': {
             'BACKEND': 'redis_cache.cache.RedisCache',
-            'LOCATION': 'localhost:6379',
+            'LOCATION': '%s:6379' % REDIS_HOST,
             'KEY_PREFIX': 'django-rq-tests',
             'OPTIONS': {
                 'DB': 2,
@@ -74,7 +82,7 @@ LOGGING = {
         },
         'null': {
             'level': 'DEBUG',
-            'class': 'django.utils.log.NullHandler',
+            'class': nullhandler,
         },
     },
     'loggers': {
@@ -85,36 +93,38 @@ LOGGING = {
     }
 }
 
+
 RQ_QUEUES = {
     'default': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 6379,
         'DB': 0,
         'DEFAULT_TIMEOUT': 500
     },
     'test': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 1,
         'DB': 1,
     },
     'test1': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 1,
         'DB': 1,
-        'DEFAULT_TIMEOUT': 400
+        'DEFAULT_TIMEOUT': 400,
+        'QUEUE_CLASS': 'django_rq.tests.DummyQueue'
     },
     'test2': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 1,
         'DB': 1,
     },
     'test3': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 6379,
         'DB': 1,
     },
     'async': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 6379,
         'DB': 1,
         'ASYNC': False,
@@ -123,13 +133,18 @@ RQ_QUEUES = {
         'URL': 'redis://username:password@host:1234/',
         'DB': 4,
     },
+    'url_with_db': {
+        'URL': 'redis://username:password@host:1234/5',
+    },
+    'url_default_db': {
+        'URL': 'redis://username:password@host:1234',
+    },
     'django_rq_test': {
-        'HOST': 'localhost',
+        'HOST': REDIS_HOST,
         'PORT': 6379,
         'DB': 0,
     },
 }
-
 RQ = {
     'AUTOCOMMIT': False,
 }
@@ -141,9 +156,28 @@ elif REDIS_CACHE_TYPE == 'django-redis-cache':
 
 ROOT_URLCONF = 'django_rq.tests.urls'
 
-TEMPLATE_LOADERS = (
-    'django.template.loaders.app_directories.Loader',
-)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [os.path.join(BASE_DIR, "templates")],
+        'APP_DIRS': False,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+            'loaders': [
+                'django.template.loaders.filesystem.Loader',
+                'django.template.loaders.app_directories.Loader',
+            ],
+        },
+    },
+]
+
 
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
@@ -154,9 +188,4 @@ MIDDLEWARE_CLASSES = (
 
 AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
-)
-
-TEMPLATE_CONTEXT_PROCESSORS = (
-    "django.contrib.auth.context_processors.auth",
-    "django.core.context_processors.request",
 )
